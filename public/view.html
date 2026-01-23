@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+  <head>
+    <title>View Users</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  </head>
+  <body>
+    <h2>Stored Users</h2>
+
+    <table border="1">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Mobile</th>
+          <th>Email</th>
+          <th>City</th>
+          <th>Login ID</th>
+        </tr>
+      </thead>
+      <tbody id="userTable"></tbody>
+    </table>
+
+    <script>
+      $(document).ready(function () {
+        $.get("/api/getUsers", function (data) {
+          data.forEach((user) => {
+            $("#userTable").append(`
+        <tr>
+          <td>${user.firstName} ${user.lastName}</td>
+          <td>${user.mobile}</td>
+          <td>${user.email}</td>
+          <td>${user.address.city}</td>
+          <td>${user.loginId}</td>
+        </tr>
+      `);
+          });
+        });
+      });
+    </script>
+  </body>
+</html>
