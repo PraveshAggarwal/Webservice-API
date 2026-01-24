@@ -24,7 +24,7 @@ const userSchema = new mongoose.Schema(
 
     loginId: {
       type: String,
-      match: /^[a-zA-Z0-9]{8}$/,
+      match: /^[A-Za-z0-9]{8}$/,
     },
 
     password: {

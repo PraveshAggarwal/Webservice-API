@@ -2,35 +2,54 @@
 <html>
   <head>
     <title>View Users</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   </head>
-  <body>
-    <h2>Stored Users</h2>
+  <body class="bg-gradient-to-br from-purple-50 to-pink-100 min-h-screen p-6">
+    <div class="max-w-6xl mx-auto">
+      <div class="bg-white rounded-xl shadow-2xl p-8">
+        <h2 class="text-3xl font-bold text-gray-800 text-center mb-8">
+          Stored Users
+        </h2>
 
-    <table border="1">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Mobile</th>
-          <th>Email</th>
-          <th>City</th>
-          <th>Login ID</th>
-        </tr>
-      </thead>
-      <tbody id="userTable"></tbody>
-    </table>
+        <div class="overflow-x-auto">
+          <table class="w-full bg-white rounded-lg overflow-hidden shadow-lg">
+            <thead
+              class="bg-gradient-to-r from-blue-500 to-purple-600 text-white"
+            >
+              <tr>
+                <th class="px-6 py-4 text-left font-semibold">Name</th>
+                <th class="px-6 py-4 text-left font-semibold">Mobile</th>
+                <th class="px-6 py-4 text-left font-semibold">Email</th>
+                <th class="px-6 py-4 text-left font-semibold">City</th>
+                <th class="px-6 py-4 text-left font-semibold">Login ID</th>
+              </tr>
+            </thead>
+            <tbody id="userTable" class="divide-y divide-gray-200"></tbody>
+          </table>
+        </div>
+
+        <div class="text-center mt-8">
+          <a
+            href="index.html"
+            class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200 transform hover:scale-105"
+            >Add New User</a
+          >
+        </div>
+      </div>
+    </div>
 
     <script>
       $(document).ready(function () {
         $.get("/api/getUsers", function (data) {
           data.forEach((user) => {
             $("#userTable").append(`
-        <tr>
-          <td>${user.firstName} ${user.lastName}</td>
-          <td>${user.mobile}</td>
-          <td>${user.email}</td>
-          <td>${user.address.city}</td>
-          <td>${user.loginId}</td>
+        <tr class="hover:bg-gray-50 transition duration-200">
+          <td class="px-6 py-4 text-gray-800 font-medium">${user.firstName} ${user.lastName}</td>
+          <td class="px-6 py-4 text-gray-600">${user.mobile}</td>
+          <td class="px-6 py-4 text-gray-600">${user.email}</td>
+          <td class="px-6 py-4 text-gray-600">${user.address.city}</td>
+          <td class="px-6 py-4 text-gray-600">${user.loginId}</td>
         </tr>
       `);
           });
