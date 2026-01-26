@@ -35,13 +35,11 @@
           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
         />
         <input
-          type="email"
+          type="text"
           placeholder="Email"
           id="email"
           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
         />
-
-        <h4 class="text-lg font-semibold text-gray-700 mt-6 mb-3">Address</h4>
         <input
           type="text"
           placeholder="Street"
@@ -134,10 +132,19 @@
             const name = `${data.firstName} ${data.lastName}`;
             socket.emit("join_live_users", { email: data.email, name });
 
+            localStorage.setItem(
+              "chatUser",
+              JSON.stringify({ name, email: data.email }),
+            );
+
+            window.location.href = `chat.html?name=${encodeURIComponent(
+              name,
+            )}&email=${encodeURIComponent(data.email)}`;
+
             $("#userForm")[0].reset();
           },
           error: function (err) {
-            alert("Error: " + err.responseJSON.error);
+            alert("Error: " + (err.responseJSON?.error || err.statusText));
           },
         });
       }
