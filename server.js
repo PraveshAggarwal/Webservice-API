@@ -12,7 +12,15 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: [
+      "http://localhost:3000",
+      "https://webservice-api-8oy7.onrender.com",
+    ],
+    credentials: true,
+  },
+});
 
 const LIVE_ROOM = "live_users";
 const liveUsers = new Map(); // socketId -> { email, name, socketId }
@@ -20,7 +28,10 @@ const liveUsers = new Map(); // socketId -> { email, name, socketId }
 // Secure CORS configuration
 app.use(
   cors({
-    origin: ["http://localhost:3000"],
+    origin: [
+      "http://localhost:3000",
+      "https://webservice-api-8oy7.onrender.com",
+    ],
     credentials: true,
   }),
 );
@@ -32,15 +43,6 @@ app.get("/", (req, res) => {
 });
 
 app.use(express.static("public"));
-
-// Use environment variable for MongoDB connection with timeout settings
-mongoose
-  .connect(process.env.MONGODB_URI, {
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000
-  })
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.log("MongoDB connection error:", err));
 
 app.post("/api/saveUser", async (req, res) => {
   try {
@@ -54,30 +56,30 @@ app.post("/api/saveUser", async (req, res) => {
       loginId: req.body.loginId,
       password: req.body.password,
     };
-    
+
     const user = new User(allowedFields);
     await user.save();
     res.json({ success: true, message: "User saved successfully" });
   } catch (err) {
-    console.error('Save user error:', err);
-    
-    if (err.name === 'ValidationError') {
-      const errors = Object.values(err.errors).map(e => e.message);
-      res.status(400).json({ 
-        success: false, 
-        error: 'Validation failed', 
-        details: errors 
+    console.error("Save user error:", err);
+
+    if (err.name === "ValidationError") {
+      const errors = Object.values(err.errors).map((e) => e.message);
+      res.status(400).json({
+        success: false,
+        error: "Validation failed",
+        details: errors,
       });
     } else if (err.code === 11000) {
       const field = Object.keys(err.keyPattern)[0];
-      res.status(400).json({ 
-        success: false, 
-        error: `${field} already exists` 
+      res.status(400).json({
+        success: false,
+        error: `${field} already exists`,
       });
     } else {
-      res.status(500).json({ 
-        success: false, 
-        error: 'Server error occurred' 
+      res.status(500).json({
+        success: false,
+        error: "Server error occurred",
       });
     }
   }
@@ -87,17 +89,19 @@ app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
-    
+
     if (!user || user.password !== password) {
-      return res.status(401).json({ success: false, error: "Invalid credentials" });
+      return res
+        .status(401)
+        .json({ success: false, error: "Invalid credentials" });
     }
-    
-    res.json({ 
-      success: true, 
-      user: { 
-        email: user.email, 
-        name: `${user.firstName} ${user.lastName}` 
-      } 
+
+    res.json({
+      success: true,
+      user: {
+        email: user.email,
+        name: `${user.firstName} ${user.lastName}`,
+      },
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -132,16 +136,18 @@ app.delete("/api/messages/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { userEmail } = req.body;
-    
+
     const message = await ChatMessage.findById(id);
     if (!message) {
-      return res.status(404).json({ success: false, error: "Message not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Message not found" });
     }
-    
+
     if (message.userEmail !== userEmail) {
       return res.status(403).json({ success: false, error: "Not authorized" });
     }
-    
+
     await ChatMessage.findByIdAndDelete(id);
     res.json({ success: true });
   } catch (err) {
@@ -208,6 +214,25 @@ function emitLiveUsers() {
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+
+// Connect to MongoDB first, then start server
+const startServer = async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS: 45000,
+      bufferCommands: false, // Disable buffering to fail fast instead of timing out
+    });
+    console.log("MongoDB connected successfully");
+
+    // Start server only after DB connection is established
+    server.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error("MongoDB connection failed:", err);
+    process.exit(1); // Exit if can't connect to DB
+  }
+};
+
+startServer();
