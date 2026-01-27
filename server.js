@@ -12,7 +12,15 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: [
+      "http://localhost:3000",
+      "https://webservice-api-8oy7.onrender.com"
+    ],
+    credentials: true,
+  }
+});
 
 const LIVE_ROOM = "live_users";
 const liveUsers = new Map(); // socketId -> { email, name, socketId }
@@ -20,7 +28,10 @@ const liveUsers = new Map(); // socketId -> { email, name, socketId }
 // Secure CORS configuration
 app.use(
   cors({
-    origin: ["http://localhost:3000"],
+    origin: [
+      "http://localhost:3000",
+      "https://webservice-api-8oy7.onrender.com"
+    ],
     credentials: true,
   }),
 );
@@ -33,14 +44,7 @@ app.get("/", (req, res) => {
 
 app.use(express.static("public"));
 
-// Use environment variable for MongoDB connection with timeout settings
-mongoose
-  .connect(process.env.MONGODB_URI, {
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000
-  })
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.log("MongoDB connection error:", err));
+// MongoDB connection will be established in startServer function below
 
 app.post("/api/saveUser", async (req, res) => {
   try {
@@ -208,6 +212,25 @@ function emitLiveUsers() {
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+
+// Connect to MongoDB first, then start server
+const startServer = async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS: 45000,
+      bufferCommands: false, // Disable buffering to fail fast instead of timing out
+    });
+    console.log("MongoDB connected successfully");
+    
+    // Start server only after DB connection is established
+    server.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error("MongoDB connection failed:", err);
+    process.exit(1); // Exit if can't connect to DB
+  }
+};
+
+startServer();
