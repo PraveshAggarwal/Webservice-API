@@ -27,11 +27,14 @@ app.use(
 app.use(bodyParser.json());
 app.use(express.static("public"));
 
-// Use environment variable for MongoDB connection
+// Use environment variable for MongoDB connection with timeout settings
 mongoose
-  .connect(process.env.MONGODB_URI)
+  .connect(process.env.MONGODB_URI, {
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000
+  })
   .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.log(err));
+  .catch((err) => console.log("MongoDB connection error:", err));
 
 app.post("/api/saveUser", async (req, res) => {
   try {
@@ -45,11 +48,32 @@ app.post("/api/saveUser", async (req, res) => {
       loginId: req.body.loginId,
       password: req.body.password,
     };
+    
     const user = new User(allowedFields);
     await user.save();
     res.json({ success: true, message: "User saved successfully" });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    console.error('Save user error:', err);
+    
+    if (err.name === 'ValidationError') {
+      const errors = Object.values(err.errors).map(e => e.message);
+      res.status(400).json({ 
+        success: false, 
+        error: 'Validation failed', 
+        details: errors 
+      });
+    } else if (err.code === 11000) {
+      const field = Object.keys(err.keyPattern)[0];
+      res.status(400).json({ 
+        success: false, 
+        error: `${field} already exists` 
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        error: 'Server error occurred' 
+      });
+    }
   }
 });
 

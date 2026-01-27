@@ -105,19 +105,101 @@
     <script>
       const socket = io();
 
+      function validateForm() {
+        const firstName = $("#firstName").val().trim();
+        const lastName = $("#lastName").val().trim();
+        const mobile = $("#mobile").val().trim();
+        const email = $("#email").val().trim();
+        const street = $("#street").val().trim();
+        const city = $("#city").val().trim();
+        const state = $("#state").val().trim();
+        const country = $("#country").val().trim();
+        const loginId = $("#loginId").val().trim();
+        const password = $("#password").val();
+
+        // Name validation
+        if (!firstName || !/^[A-Za-z\s]+$/.test(firstName)) {
+          alert(
+            "First name is required and should only contain letters and spaces",
+          );
+          return false;
+        }
+        if (!lastName || !/^[A-Za-z\s]+$/.test(lastName)) {
+          alert(
+            "Last name is required and should only contain letters and spaces",
+          );
+          return false;
+        }
+
+        // Mobile validation
+        if (!mobile || !/^[0-9]{10}$/.test(mobile)) {
+          alert("Mobile number must be exactly 10 digits");
+          return false;
+        }
+
+        // Email validation
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          alert("Please enter a valid email address");
+          return false;
+        }
+
+        // Address validation
+        if (!street || !/^[A-Za-z0-9\s,.-]+$/.test(street)) {
+          alert("Street address is required and contains valid characters");
+          return false;
+        }
+        if (!city || !/^[A-Za-z\s]+$/.test(city)) {
+          alert("City is required and should only contain letters and spaces");
+          return false;
+        }
+        if (!state || !/^[A-Za-z\s]+$/.test(state)) {
+          alert("State is required and should only contain letters and spaces");
+          return false;
+        }
+        if (!country || !/^[A-Za-z\s]+$/.test(country)) {
+          alert(
+            "Country is required and should only contain letters and spaces",
+          );
+          return false;
+        }
+
+        // Login ID validation
+        if (!loginId || !/^[A-Za-z0-9]{8}$/.test(loginId)) {
+          alert("Login ID must be exactly 8 alphanumeric characters");
+          return false;
+        }
+
+        // Password validation
+        if (
+          !password ||
+          !/^(?=.*[a-z])(?=.*[A-Z])(?=.*[\W_]).{6,}$/.test(password)
+        ) {
+          alert(
+            "Password must be at least 6 characters with uppercase, lowercase, and special character",
+          );
+          return false;
+        }
+
+        return true;
+      }
+
       function saveUser() {
+        if (!validateForm()) {
+          return;
+        }
+
         const data = {
-          firstName: $("#firstName").val(),
-          lastName: $("#lastName").val(),
-          mobile: $("#mobile").val(),
-          email: $("#email").val(),
+          firstName: $("#firstName").val().trim(),
+          lastName: $("#lastName").val().trim(),
+          mobile: $("#mobile").val().trim(),
+          email: $("#email").val().trim(),
           address: {
-            street: $("#street").val(),
-            city: $("#city").val(),
-            state: $("#state").val(),
-            country: $("#country").val(),
+            street: $("#street").val().trim(),
+            city: $("#city").val().trim(),
+            state: $("#state").val().trim(),
+            country: $("#country").val().trim(),
           },
-          loginId: $("#loginId").val(),
+          loginId: $("#loginId").val().trim(),
           password: $("#password").val(),
         };
 
@@ -126,6 +208,7 @@
           type: "POST",
           contentType: "application/json",
           data: JSON.stringify(data),
+          timeout: 10000,
           success: function (res) {
             alert(res.message);
 
@@ -143,8 +226,21 @@
 
             $("#userForm")[0].reset();
           },
-          error: function (err) {
-            alert("Error: " + (err.responseJSON?.error || err.statusText));
+          error: function (xhr, status, error) {
+            let errorMessage = "An error occurred";
+
+            if (xhr.responseJSON) {
+              if (xhr.responseJSON.details) {
+                errorMessage = xhr.responseJSON.details.join("\n");
+              } else {
+                errorMessage = xhr.responseJSON.error;
+              }
+            } else if (status === "timeout") {
+              errorMessage =
+                "Request timed out. Please check your connection and try again.";
+            }
+
+            alert("Error: " + errorMessage);
           },
         });
       }
