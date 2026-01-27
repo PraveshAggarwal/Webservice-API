@@ -35,16 +35,44 @@
       $(document).ready(function () {
         const socket = io();
 
+        // Check if user came from login page
         const params = new URLSearchParams(window.location.search);
-        const stored = JSON.parse(localStorage.getItem("chatUser") || "{}");
+        const name = params.get("name");
+        const email = params.get("email");
 
-        const name = params.get("name") || stored.name;
-        const email = params.get("email") || stored.email;
-
+        // Only allow access if user came directly from login with params
         if (!name || !email) {
           alert("Please login to access the chat");
           window.location.replace("welcome.html");
           return;
+        }
+
+        // Clear the URL params to prevent reuse
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname,
+        );
+
+        // Set a session flag to track active chat session
+        sessionStorage.setItem("chatActive", "true");
+
+        // Clear session when user leaves the page (back button, close, navigate away)
+        window.addEventListener("beforeunload", function () {
+          sessionStorage.removeItem("chatActive");
+          localStorage.removeItem("chatUser");
+        });
+
+        // Prevent back button from accessing chat page
+        window.addEventListener("popstate", function () {
+          sessionStorage.removeItem("chatActive");
+          localStorage.removeItem("chatUser");
+          window.location.replace("welcome.html");
+        });
+
+        // Prevent accessing chat page via browser back
+        if (sessionStorage.getItem("chatActive") !== "true") {
+          sessionStorage.setItem("chatActive", "true");
         }
 
         socket.emit("join_chat", { name, email });
@@ -91,14 +119,15 @@
 
         function addMessageToUI(msg) {
           const isOwnMessage = msg.userEmail === email;
-          const deleteBtn = isOwnMessage ? 
-            `<button class="delete-btn" onclick="deleteMessage('${msg._id}')" title="Delete message">🗑️</button>` : '';
-          
+          const deleteBtn = isOwnMessage
+            ? `<button class="delete-btn" onclick="deleteMessage('${msg._id}')" title="Delete message">🗑️</button>`
+            : "";
+
           $("#messages").append(
             `<li data-id="${msg._id}">
               <span><strong>${msg.user}:</strong> ${msg.message}</span>
               ${deleteBtn}
-            </li>`
+            </li>`,
           );
           autoScroll();
         }
@@ -121,7 +150,7 @@
           $(`li[data-id="${messageId}"]`).remove();
         });
 
-        window.deleteMessage = function(messageId) {
+        window.deleteMessage = function (messageId) {
           if (confirm("Delete this message?")) {
             socket.emit("delete_message", { messageId, userEmail: email });
           }
@@ -143,6 +172,7 @@
 
         $("#logoutBtn").click(function () {
           socket.emit("logout");
+          sessionStorage.removeItem("chatActive");
           localStorage.removeItem("chatUser");
           // Clear browser history and redirect
           window.location.replace("welcome.html");

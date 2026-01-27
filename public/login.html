@@ -10,9 +10,7 @@
     class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen flex items-center justify-center p-4"
   >
     <div class="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md">
-      <h2 class="text-3xl font-bold text-gray-800 text-center mb-8">
-        Login
-      </h2>
+      <h2 class="text-3xl font-bold text-gray-800 text-center mb-8">Login</h2>
 
       <form id="loginForm" class="space-y-4">
         <input
@@ -63,14 +61,10 @@
           data: JSON.stringify({ email, password }),
           success: function (res) {
             alert("Login successful!");
-            
-            localStorage.setItem(
-              "chatUser",
-              JSON.stringify({ name: res.user.name, email: res.user.email })
-            );
 
+            // Don't store in localStorage - force relogin each time
             window.location.href = `chat.html?name=${encodeURIComponent(
-              res.user.name
+              res.user.name,
             )}&email=${encodeURIComponent(res.user.email)}`;
           },
           error: function (xhr) {
