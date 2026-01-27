@@ -42,12 +42,12 @@
         const email = params.get("email") || stored.email;
 
         if (!name || !email) {
-          window.location.href = "index.html";
+          alert("Please login to access the chat");
+          window.location.replace("welcome.html");
           return;
         }
 
         socket.emit("join_chat", { name, email });
-        socket.emit("watch_live_users");
 
         let allUsers = [];
         let liveUsers = [];
@@ -90,8 +90,15 @@
         }
 
         function addMessageToUI(msg) {
+          const isOwnMessage = msg.userEmail === email;
+          const deleteBtn = isOwnMessage ? 
+            `<button class="delete-btn" onclick="deleteMessage('${msg._id}')" title="Delete message">🗑️</button>` : '';
+          
           $("#messages").append(
-            `<li><strong>${msg.user}:</strong> ${msg.message}</li>`,
+            `<li data-id="${msg._id}">
+              <span><strong>${msg.user}:</strong> ${msg.message}</span>
+              ${deleteBtn}
+            </li>`
           );
           autoScroll();
         }
@@ -110,6 +117,16 @@
           addMessageToUI(newMessage);
         });
 
+        socket.on("message_deleted", function ({ messageId }) {
+          $(`li[data-id="${messageId}"]`).remove();
+        });
+
+        window.deleteMessage = function(messageId) {
+          if (confirm("Delete this message?")) {
+            socket.emit("delete_message", { messageId, userEmail: email });
+          }
+        };
+
         $("#sendBtn").click(function () {
           const message = $("#message").val().trim();
           if (!message) return;
@@ -127,7 +144,8 @@
         $("#logoutBtn").click(function () {
           socket.emit("logout");
           localStorage.removeItem("chatUser");
-          window.location.href = "index.html";
+          // Clear browser history and redirect
+          window.location.replace("welcome.html");
         });
 
         fetchUsers();

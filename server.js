@@ -25,6 +25,12 @@ app.use(
   }),
 );
 app.use(bodyParser.json());
+
+// Redirect root to welcome page
+app.get("/", (req, res) => {
+  res.redirect("/welcome.html");
+});
+
 app.use(express.static("public"));
 
 // Use environment variable for MongoDB connection with timeout settings
@@ -77,6 +83,27 @@ app.post("/api/saveUser", async (req, res) => {
   }
 });
 
+app.post("/api/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+    
+    if (!user || user.password !== password) {
+      return res.status(401).json({ success: false, error: "Invalid credentials" });
+    }
+    
+    res.json({ 
+      success: true, 
+      user: { 
+        email: user.email, 
+        name: `${user.firstName} ${user.lastName}` 
+      } 
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.get("/api/getUsers", async (req, res) => {
   try {
     const filter = {};
@@ -101,16 +128,28 @@ app.get("/api/messages", async (req, res) => {
   }
 });
 
+app.delete("/api/messages/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userEmail } = req.body;
+    
+    const message = await ChatMessage.findById(id);
+    if (!message) {
+      return res.status(404).json({ success: false, error: "Message not found" });
+    }
+    
+    if (message.userEmail !== userEmail) {
+      return res.status(403).json({ success: false, error: "Not authorized" });
+    }
+    
+    await ChatMessage.findByIdAndDelete(id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 io.on("connection", (socket) => {
-  socket.on("join_live_users", ({ email, name }) => {
-    if (!email || !name) return;
-
-    const data = { email, name, socketId: socket.id };
-    liveUsers.set(socket.id, data);
-    socket.join(LIVE_ROOM);
-    emitLiveUsers();
-  });
-
   socket.on("join_chat", ({ email, name }) => {
     if (!email || !name) return;
 
@@ -120,23 +159,31 @@ io.on("connection", (socket) => {
     emitLiveUsers();
   });
 
-  socket.on("watch_live_users", () => {
-    socket.join(LIVE_ROOM);
-    emitLiveUsers();
-  });
-
   socket.on("chat_message", async ({ user, email, message }) => {
-    if (!user || !message) return;
+    if (!user || !message || !email) return;
 
     try {
       const saved = await ChatMessage.create({
         user,
         message,
+        userEmail: email,
       });
 
       io.emit("chat_message", saved);
     } catch (err) {
       console.error("Failed to save message:", err);
+    }
+  });
+
+  socket.on("delete_message", async ({ messageId, userEmail }) => {
+    try {
+      const message = await ChatMessage.findById(messageId);
+      if (message && message.userEmail === userEmail) {
+        await ChatMessage.findByIdAndDelete(messageId);
+        io.emit("message_deleted", { messageId });
+      }
+    } catch (err) {
+      console.error("Failed to delete message:", err);
     }
   });
 

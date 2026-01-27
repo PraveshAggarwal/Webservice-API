@@ -95,9 +95,9 @@
         >
         <span class="mx-2">|</span>
         <a
-          href="live.html"
+          href="login.html"
           class="text-blue-600 hover:text-blue-800 font-medium"
-          >Live Users</a
+          >Login</a
         >
       </div>
     </div>
@@ -213,7 +213,6 @@
             alert(res.message);
 
             const name = `${data.firstName} ${data.lastName}`;
-            socket.emit("join_live_users", { email: data.email, name });
 
             localStorage.setItem(
               "chatUser",
