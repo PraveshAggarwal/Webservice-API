@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs";
 import User from "./models/user.js";
 import PersonalChat from "./models/personalChat.js";
 import http from "http";
@@ -15,6 +16,13 @@ dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, "public", "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log("Created uploads directory");
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -47,12 +55,18 @@ const upload = multer({
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: [
+
+// Get allowed origins from environment or use defaults
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",")
+  : [
       "http://localhost:3000",
       "https://webservice-api-8oy7.onrender.com",
-    ],
+    ];
+
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
     credentials: true,
   },
 });
@@ -60,13 +74,31 @@ const io = new Server(server, {
 const LIVE_ROOM = "live_users";
 const liveUsers = new Map(); // socketId -> { email, name, socketId }
 
+// Security headers middleware
+app.use((req, res, next) => {
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://code.jquery.com; " +
+    "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; " +
+    "img-src 'self' data: blob:; " +
+    "font-src 'self' data:; " +
+    "connect-src 'self' wss: ws:; " +
+    "media-src 'self' blob:; " +
+    "frame-src 'none'; " +
+    "object-src 'none';"
+  );
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
+
 // Secure CORS configuration
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "https://webservice-api-8oy7.onrender.com",
-    ],
+    origin: allowedOrigins,
     credentials: true,
   }),
 );
