@@ -71,23 +71,10 @@ const io = new Server(server, {
 const LIVE_ROOM = "live_users";
 const liveUsers = new Map(); // socketId -> { email, name, socketId }
 
-// Security headers middleware
+// Security headers middleware (relaxed for CDN resources)
 app.use((req, res, next) => {
-  res.setHeader(
-    "Content-Security-Policy",
-    "default-src 'self'; " +
-      "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://code.jquery.com; " +
-      "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; " +
-      "img-src 'self' data: blob:; " +
-      "font-src 'self' data:; " +
-      "connect-src 'self' wss: ws:; " +
-      "media-src 'self' blob:; " +
-      "frame-src 'none'; " +
-      "object-src 'none';",
-  );
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   next();
 });
