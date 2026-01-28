@@ -59,10 +59,7 @@ const server = http.createServer(app);
 // Get allowed origins from environment or use defaults
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",")
-  : [
-      "http://localhost:3000",
-      "https://webservice-api-8oy7.onrender.com",
-    ];
+  : ["http://localhost:3000", "https://webservice-api-8oy7.onrender.com"];
 
 const io = new Server(server, {
   cors: {
@@ -79,14 +76,14 @@ app.use((req, res, next) => {
   res.setHeader(
     "Content-Security-Policy",
     "default-src 'self'; " +
-    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://code.jquery.com; " +
-    "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; " +
-    "img-src 'self' data: blob:; " +
-    "font-src 'self' data:; " +
-    "connect-src 'self' wss: ws:; " +
-    "media-src 'self' blob:; " +
-    "frame-src 'none'; " +
-    "object-src 'none';"
+      "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://code.jquery.com; " +
+      "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; " +
+      "img-src 'self' data: blob:; " +
+      "font-src 'self' data:; " +
+      "connect-src 'self' wss: ws:; " +
+      "media-src 'self' blob:; " +
+      "frame-src 'none'; " +
+      "object-src 'none';",
   );
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
