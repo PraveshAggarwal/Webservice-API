@@ -56,42 +56,76 @@ const upload = multer({
 const app = express();
 const server = http.createServer(app);
 
-// CORS configuration - allow same origin always
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    const allowedOrigins = process.env.ALLOWED_ORIGINS
-      ? process.env.ALLOWED_ORIGINS.split(",")
-      : ["http://localhost:3000", "https://webservice-api-8oy7.onrender.com"];
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(null, true); // Allow all for now to debug
-    }
-  },
-  credentials: true,
-};
+// Get allowed origins from environment or use defaults
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",")
+  : ["http://localhost:3000", "https://webservice-api-8oy7.onrender.com"];
 
 const io = new Server(server, {
-  cors: corsOptions,
+  cors: {
+    origin: allowedOrigins,
+    credentials: true,
+  },
 });
 
 const LIVE_ROOM = "live_users";
 const liveUsers = new Map(); // socketId -> { email, name, socketId }
 
-// Security headers middleware
+// Enhanced Security Headers Middleware
 app.use((req, res, next) => {
+  // Content Security Policy - allows necessary external resources
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; " +
+      "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://code.jquery.com; " +
+      "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; " +
+      "img-src 'self' data: https:; " +
+      "font-src 'self' data:; " +
+      "connect-src 'self' wss: ws: https:; " +
+      "media-src 'self'; " +
+      "object-src 'none'; " +
+      "frame-ancestors 'none'; " +
+      "base-uri 'self'; " +
+      "form-action 'self';",
+  );
+
+  // Prevent MIME type sniffing
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+
+  // Prevent clickjacking
+  res.setHeader("X-Frame-Options", "DENY");
+
+  // XSS Protection
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+
+  // Strict Transport Security (HTTPS only)
+  res.setHeader(
+    "Strict-Transport-Security",
+    "max-age=31536000; includeSubDomains; preload",
+  );
+
+  // Referrer Policy
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+
+  // Permissions Policy
+  res.setHeader(
+    "Permissions-Policy",
+    "geolocation=(), microphone=(), camera=()",
+  );
+
   next();
 });
 
-// CORS middleware
-app.use(cors(corsOptions));
+// Secure CORS configuration
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
+
 app.use(bodyParser.json());
 
 // Redirect root to welcome page
