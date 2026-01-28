@@ -56,22 +56,33 @@ const upload = multer({
 const app = express();
 const server = http.createServer(app);
 
-// Get allowed origins from environment or use defaults
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(",")
-  : ["http://localhost:3000", "https://webservice-api-8oy7.onrender.com"];
+// CORS configuration - allow same origin always
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = process.env.ALLOWED_ORIGINS
+      ? process.env.ALLOWED_ORIGINS.split(",")
+      : ["http://localhost:3000", "https://webservice-api-8oy7.onrender.com"];
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all for now to debug
+    }
+  },
+  credentials: true,
+};
 
 const io = new Server(server, {
-  cors: {
-    origin: allowedOrigins,
-    credentials: true,
-  },
+  cors: corsOptions,
 });
 
 const LIVE_ROOM = "live_users";
 const liveUsers = new Map(); // socketId -> { email, name, socketId }
 
-// Security headers middleware (relaxed for CDN resources)
+// Security headers middleware
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
@@ -79,13 +90,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Secure CORS configuration
-app.use(
-  cors({
-    origin: allowedOrigins,
-    credentials: true,
-  }),
-);
+// CORS middleware
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 
 // Redirect root to welcome page
