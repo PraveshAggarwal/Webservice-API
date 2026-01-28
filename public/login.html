@@ -61,11 +61,10 @@
           data: JSON.stringify({ email, password }),
           success: function (res) {
             alert("Login successful!");
-
-            // Don't store in localStorage - force relogin each time
-            window.location.href = `chat.html?name=${encodeURIComponent(
-              res.user.name,
-            )}&email=${encodeURIComponent(res.user.email)}`;
+            
+            // Store user data in localStorage
+            localStorage.setItem('currentUser', JSON.stringify(res.user));
+            window.location.href = 'users.html';
           },
           error: function (xhr) {
             const errorMessage = xhr.responseJSON?.error || "Login failed";
@@ -74,9 +73,11 @@
         });
       }
 
-      $("#password").keypress(function (e) {
-        if (e.which === 13) {
-          login();
+      // Check if user is already logged in
+      $(document).ready(function() {
+        const currentUser = localStorage.getItem('currentUser');
+        if (currentUser) {
+          window.location.href = 'users.html';
         }
       });
     </script>

@@ -3,12 +3,47 @@ import mongoose from "mongoose";
 import cors from "cors";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
+import multer from "multer";
+import path from "path";
+import { fileURLToPath } from "url";
 import User from "./models/user.js";
-import ChatMessage from "./models/chat.js";
+import PersonalChat from "./models/personalChat.js";
 import http from "http";
 import { Server } from "socket.io";
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "public/uploads/");
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx|mp4|mp3|wav/;
+    const extname = allowedTypes.test(
+      path.extname(file.originalname).toLowerCase(),
+    );
+    const mimetype = allowedTypes.test(file.mimetype);
+
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error("Invalid file type"));
+    }
+  },
+});
 
 const app = express();
 const server = http.createServer(app);
@@ -121,35 +156,50 @@ app.get("/api/getUsers", async (req, res) => {
   }
 });
 
-app.get("/api/messages", async (req, res) => {
+app.get("/api/users-list/:currentUser", async (req, res) => {
   try {
-    const messages = await ChatMessage.find({})
-      .sort({ timestamp: 1 })
-      .limit(100);
-    res.json(messages);
+    const { currentUser } = req.params;
+    const users = await User.find({ email: { $ne: currentUser } }).select(
+      "firstName lastName email",
+    );
+    res.json(users);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.delete("/api/messages/:id", async (req, res) => {
+// Personal chat endpoints
+app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
-    const { id } = req.params;
-    const { userEmail } = req.body;
-
-    const message = await ChatMessage.findById(id);
-    if (!message) {
+    if (!req.file) {
       return res
-        .status(404)
-        .json({ success: false, error: "Message not found" });
+        .status(400)
+        .json({ success: false, error: "No file uploaded" });
     }
 
-    if (message.userEmail !== userEmail) {
-      return res.status(403).json({ success: false, error: "Not authorized" });
-    }
+    // Simulate slow upload to show loading (500ms-1s based on file size)
+    const fileSize = req.file.size;
+    const delay = Math.min(1000, Math.max(500, fileSize / 500000)); // 0.5-1 seconds
+    await new Promise((resolve) => setTimeout(resolve, delay));
 
-    await ChatMessage.findByIdAndDelete(id);
-    res.json({ success: true });
+    res.json({
+      success: true,
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      size: req.file.size,
+      url: `/uploads/${req.file.filename}`,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/chat/:user1/:user2", async (req, res) => {
+  try {
+    const { user1, user2 } = req.params;
+    const participants = [user1, user2].sort();
+    const chat = await PersonalChat.findOne({ participants });
+    res.json(chat || { participants, messages: [] });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -165,28 +215,67 @@ io.on("connection", (socket) => {
     emitLiveUsers();
   });
 
-  socket.on("chat_message", async ({ user, email, message }) => {
-    if (!user || !message || !email) return;
-
-    try {
-      const saved = await ChatMessage.create({
-        user,
-        message,
-        userEmail: email,
-      });
-
-      io.emit("chat_message", saved);
-    } catch (err) {
-      console.error("Failed to save message:", err);
-    }
+  socket.on("join_personal_chat", ({ user1, user2 }) => {
+    const room = [user1, user2].sort().join("-");
+    socket.join(room);
   });
+
+  socket.on(
+    "send_message",
+    async ({ sender, recipient, message, fileData }) => {
+      if (!sender || !recipient || (!message && !fileData)) return;
+
+      try {
+        const participants = [sender, recipient].sort();
+        let chat = await PersonalChat.findOne({ participants });
+
+        if (!chat) {
+          chat = new PersonalChat({ participants, messages: [] });
+        }
+
+        const newMessage = {
+          sender,
+          timestamp: new Date(),
+          messageType: fileData ? "file" : "text",
+        };
+
+        if (fileData) {
+          newMessage.fileUrl = fileData.url;
+          newMessage.fileName = fileData.originalName;
+          newMessage.fileSize = fileData.size;
+          newMessage.message = fileData.originalName;
+        } else {
+          newMessage.message = message;
+        }
+
+        chat.messages.push(newMessage);
+        chat.lastMessage = new Date();
+        const savedChat = await chat.save();
+
+        // Get the saved message with _id
+        const savedMessage = savedChat.messages[savedChat.messages.length - 1];
+
+        const room = participants.join("-");
+        io.to(room).emit("receive_message", savedMessage);
+      } catch (err) {
+        console.error("Failed to save message:", err);
+      }
+    },
+  );
 
   socket.on("delete_message", async ({ messageId, userEmail }) => {
     try {
-      const message = await ChatMessage.findById(messageId);
-      if (message && message.userEmail === userEmail) {
-        await ChatMessage.findByIdAndDelete(messageId);
-        io.emit("message_deleted", { messageId });
+      const chat = await PersonalChat.findOne({
+        "messages._id": messageId,
+        "messages.sender": userEmail,
+      });
+
+      if (chat) {
+        chat.messages.pull(messageId);
+        await chat.save();
+
+        const room = chat.participants.sort().join("-");
+        io.to(room).emit("message_deleted", { messageId });
       }
     } catch (err) {
       console.error("Failed to delete message:", err);

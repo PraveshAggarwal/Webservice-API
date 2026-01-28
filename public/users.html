@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Users - Personal Chat</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container { 
+            max-width: 900px; 
+            margin: 0 auto; 
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header { 
+            background: white; 
+            padding: 25px; 
+            border-radius: 15px; 
+            margin-bottom: 25px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        .header p {
+            color: #666;
+            font-size: 16px;
+            margin-top: 5px;
+        }
+        .user-list { 
+            background: white; 
+            border-radius: 15px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            overflow: hidden;
+            flex: 1;
+        }
+        .user-item { 
+            padding: 20px 25px; 
+            border-bottom: 1px solid #f0f0f0; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            cursor: pointer;
+        }
+        .user-item:hover { 
+            background: #f8f9ff;
+        }
+        .user-item:last-child { border-bottom: none; }
+        .user-info h3 { 
+            color: #333; 
+            margin-bottom: 5px;
+            font-size: 18px;
+            font-weight: 500;
+        }
+        .user-info p { 
+            color: #666; 
+            font-size: 14px;
+        }
+        .chat-btn { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; 
+            border: none; 
+            padding: 12px 24px; 
+            border-radius: 25px; 
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        .chat-btn:hover { 
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+        .logout-btn { 
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+            color: white; 
+            border: none; 
+            padding: 12px 20px; 
+            border-radius: 25px; 
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+        }
+        .logout-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+        }
+        .loading, .no-users {
+            padding: 40px 20px;
+            text-align: center;
+            color: #666;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Personal Chat System</h1>
+            <p>Welcome, <span id="currentUserName"></span></p>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+        <div class="user-list" id="userList">
+            <div class="loading">Loading users...</div>
+        </div>
+    </div>
+
+    <script>
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        if (!currentUser) {
+            window.location.href = '/login.html';
+        }
+
+        document.getElementById('currentUserName').textContent = currentUser.name;
+
+        async function loadUsers() {
+            try {
+                const response = await fetch(`/api/users-list/${currentUser.email}`);
+                const users = await response.json();
+                
+                const userList = document.getElementById('userList');
+                if (users.length === 0) {
+                    userList.innerHTML = '<div class="no-users">No other users found</div>';
+                    return;
+                }
+
+                userList.innerHTML = users.map(user => `
+                    <div class="user-item">
+                        <div class="user-info">
+                            <h3>${user.firstName} ${user.lastName}</h3>
+                            <p>${user.email}</p>
+                        </div>
+                        <button class="chat-btn" onclick="openChat('${user.email}', '${user.firstName} ${user.lastName}')">
+                            Chat
+                        </button>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading users:', error);
+                document.getElementById('userList').innerHTML = '<div class="loading">Error loading users</div>';
+            }
+        }
+
+        function openChat(userEmail, userName) {
+            localStorage.setItem('chatWith', JSON.stringify({ email: userEmail, name: userName }));
+            window.location.href = '/chat.html';
+        }
+
+        function logout() {
+            localStorage.removeItem('currentUser');
+            localStorage.removeItem('chatWith');
+            window.location.href = '/login.html';
+        }
+
+        loadUsers();
+    </script>
+</body>
+</html>

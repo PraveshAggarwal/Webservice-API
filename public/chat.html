@@ -2,8 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Chat Room</title>
-
+    <title>Personal Chat</title>
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <link rel="stylesheet" href="chat.css" />
@@ -11,125 +10,129 @@
 
   <body>
     <div class="chat-layout">
-      <aside class="sidebar">
-        <h2>Users</h2>
-        <ul id="userStatusList"></ul>
-      </aside>
-
       <main class="chat-container">
         <div class="chat-header">
-          <h1>Global Chat</h1>
-          <button id="logoutBtn">Logout</button>
+          <h1 id="chatTitle">Personal Chat</h1>
+          <div>
+            <button onclick="goBack()">Back to Users</button>
+            <button id="logoutBtn">Logout</button>
+          </div>
         </div>
 
         <ul id="messages"></ul>
 
         <div class="input-group">
+          <button id="attachBtn" title="Attach file">+</button>
           <input type="text" id="message" placeholder="Type your message..." />
           <button id="sendBtn">Send</button>
         </div>
+
+        <div id="dragOverlay" class="drag-overlay">
+          <div class="drag-content">
+            <div class="drag-icon">📎</div>
+            <p>Drop files here to send</p>
+          </div>
+        </div>
+
+        <input
+          type="file"
+          id="fileInput"
+          style="display: none"
+          multiple
+          accept="image/*,video/*,audio/*,.pdf,.doc,.docx"
+        />
       </main>
     </div>
 
     <script>
       $(document).ready(function () {
         const socket = io();
+        const currentUser = JSON.parse(localStorage.getItem("currentUser"));
+        const chatWith = JSON.parse(localStorage.getItem("chatWith"));
 
-        // Check if user came from login page
-        const params = new URLSearchParams(window.location.search);
-        const name = params.get("name");
-        const email = params.get("email");
-
-        // Only allow access if user came directly from login with params
-        if (!name || !email) {
-          alert("Please login to access the chat");
-          window.location.replace("welcome.html");
+        if (!currentUser || !chatWith) {
+          window.location.href = "/users.html";
           return;
         }
 
-        // Clear the URL params to prevent reuse
-        window.history.replaceState(
-          {},
-          document.title,
-          window.location.pathname,
-        );
+        document.getElementById("chatTitle").textContent =
+          `Chat with ${chatWith.name}`;
 
-        // Set a session flag to track active chat session
-        sessionStorage.setItem("chatActive", "true");
-
-        // Clear session when user leaves the page (back button, close, navigate away)
-        window.addEventListener("beforeunload", function () {
-          sessionStorage.removeItem("chatActive");
-          localStorage.removeItem("chatUser");
+        socket.emit("join_personal_chat", {
+          user1: currentUser.email,
+          user2: chatWith.email,
         });
 
-        // Prevent back button from accessing chat page
-        window.addEventListener("popstate", function () {
-          sessionStorage.removeItem("chatActive");
-          localStorage.removeItem("chatUser");
-          window.location.replace("welcome.html");
-        });
+        async function loadMessages() {
+          try {
+            const response = await fetch(
+              `/api/chat/${currentUser.email}/${chatWith.email}`,
+            );
+            const chat = await response.json();
 
-        // Prevent accessing chat page via browser back
-        if (sessionStorage.getItem("chatActive") !== "true") {
-          sessionStorage.setItem("chatActive", "true");
-        }
-
-        socket.emit("join_chat", { name, email });
-
-        let allUsers = [];
-        let liveUsers = [];
-
-        function renderUserStatuses() {
-          const liveEmails = new Set(liveUsers.map((u) => u.email));
-          const items = allUsers.map((u) => {
-            const isOnline = liveEmails.has(u.email);
-            return `
-              <li class="user-row">
-                <span class="status-dot ${isOnline ? "online" : "offline"}"></span>
-                <span class="user-name">${u.firstName} ${u.lastName}</span>
-                <span class="user-state">${isOnline ? "Online" : "Offline"}</span>
-              </li>
-            `;
-          });
-
-          $("#userStatusList").html(items.join(""));
-        }
-
-        function fetchUsers() {
-          $.get("/api/getUsers", function (data) {
-            allUsers = data;
-            renderUserStatuses();
-          });
-        }
-
-        function fetchMessages() {
-          $.ajax({
-            url: "/api/messages",
-            method: "GET",
-            success: function (data) {
-              data.forEach(addMessageToUI);
-              autoScroll();
-            },
-            error: function (err) {
-              console.error("Error fetching messages:", err);
-            },
-          });
+            $("#messages").empty();
+            if (chat.messages) {
+              chat.messages.forEach((msg) => {
+                addMessageToUI(msg);
+              });
+            }
+            autoScroll();
+          } catch (error) {
+            console.error("Error loading messages:", error);
+          }
         }
 
         function addMessageToUI(msg) {
-          const isOwnMessage = msg.userEmail === email;
+          const isOwnMessage = msg.sender === currentUser.email;
+          const messageClass = isOwnMessage ? "own-message" : "other-message";
+          const time = new Date(msg.timestamp).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
           const deleteBtn = isOwnMessage
-            ? `<button class="delete-btn" onclick="deleteMessage('${msg._id}')" title="Delete message">🗑️</button>`
+            ? `<button class="delete-btn" onclick="deleteMessage('${msg._id}')" title="Delete">🗑️</button>`
             : "";
 
-          $("#messages").append(
-            `<li data-id="${msg._id}">
-              <span><strong>${msg.user}:</strong> ${msg.message}</span>
-              ${deleteBtn}
-            </li>`,
-          );
+          let content = "";
+          if (msg.messageType === "file") {
+            const fileExt = msg.fileName.split(".").pop().toLowerCase();
+            const isImage = ["jpg", "jpeg", "png", "gif"].includes(fileExt);
+
+            if (isImage) {
+              content = `<img src="${msg.fileUrl}" alt="${msg.fileName}" class="message-image" onclick="window.open('${msg.fileUrl}', '_blank')">`;
+            } else {
+              content = `<div class="file-attachment" onclick="window.open('${msg.fileUrl}', '_blank')">
+                <span class="file-icon">📎</span>
+                <div class="file-info">
+                  <div class="file-name">${msg.fileName}</div>
+                  <div class="file-size">${formatFileSize(msg.fileSize)}</div>
+                </div>
+              </div>`;
+            }
+          } else {
+            content = `<div class="message-content">${msg.message}</div>`;
+          }
+
+          $("#messages").append(`
+            <li class="${messageClass}" data-id="${msg._id || ""}">
+              <div class="message-bubble">
+                ${content}
+                <div class="message-time">${time}</div>
+                ${deleteBtn}
+              </div>
+            </li>
+          `);
           autoScroll();
+        }
+
+        function formatFileSize(bytes) {
+          if (bytes === 0) return "0 Bytes";
+          const k = 1024;
+          const sizes = ["Bytes", "KB", "MB", "GB"];
+          const i = Math.floor(Math.log(bytes) / Math.log(k));
+          return (
+            parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
+          );
         }
 
         function autoScroll() {
@@ -137,30 +140,176 @@
           box.scrollTop(box.prop("scrollHeight"));
         }
 
-        socket.on("live_users_update", (users) => {
-          liveUsers = users;
-          renderUserStatuses();
+        socket.on("receive_message", function (message) {
+          addMessageToUI(message);
         });
 
-        socket.on("chat_message", function (newMessage) {
-          addMessageToUI(newMessage);
+        $("#attachBtn").click(function () {
+          $("#fileInput").click();
         });
+
+        $("#fileInput").change(function (e) {
+          const files = e.target.files;
+          if (files.length > 0) {
+            uploadFiles(files);
+          }
+        });
+
+        // Drag and drop functionality - limited to chat container
+        let dragCounter = 0;
+
+        $(".chat-container").on("dragenter", function (e) {
+          e.preventDefault();
+          dragCounter++;
+          $("#dragOverlay").addClass("active");
+        });
+
+        $(".chat-container").on("dragleave", function (e) {
+          e.preventDefault();
+          dragCounter--;
+          if (dragCounter === 0) {
+            $("#dragOverlay").removeClass("active");
+          }
+        });
+
+        $(".chat-container").on("dragover", function (e) {
+          e.preventDefault();
+        });
+
+        $(".chat-container").on("drop", function (e) {
+          e.preventDefault();
+          dragCounter = 0;
+          $("#dragOverlay").removeClass("active");
+
+          const files = e.originalEvent.dataTransfer.files;
+          if (files.length > 0) {
+            uploadFiles(files);
+          }
+        });
+
+        window.deleteMessage = function (messageId) {
+          if (!messageId) return;
+          if (confirm("Delete this message?")) {
+            socket.emit("delete_message", {
+              messageId,
+              userEmail: currentUser.email,
+            });
+          }
+        };
 
         socket.on("message_deleted", function ({ messageId }) {
           $(`li[data-id="${messageId}"]`).remove();
         });
 
-        window.deleteMessage = function (messageId) {
-          if (confirm("Delete this message?")) {
-            socket.emit("delete_message", { messageId, userEmail: email });
-          }
-        };
+        function uploadFiles(files) {
+          Array.from(files).forEach((file) => {
+            const formData = new FormData();
+            formData.append("file", file);
+
+            // Show loading message with progress
+            const loadingId = "loading-" + Date.now() + Math.random();
+            const startTime = Date.now();
+
+            $("#messages").append(`
+              <li class="own-message" id="${loadingId}">
+                <div class="message-bubble loading-message">
+                  <div class="upload-progress">
+                    <div class="loading-spinner"></div>
+                    <div class="upload-text">Uploading ${file.name}...</div>
+                    <div class="progress-bar">
+                      <div class="progress-fill"></div>
+                    </div>
+                  </div>
+                  <div class="message-time">uploading</div>
+                </div>
+              </li>
+            `);
+            autoScroll();
+
+            // Simulate progress updates for better UX
+            let simulatedProgress = 0;
+            const progressInterval = setInterval(() => {
+              if (simulatedProgress < 90) {
+                simulatedProgress += Math.random() * 10;
+                $(`#${loadingId} .progress-fill`).css(
+                  "width",
+                  Math.min(90, simulatedProgress) + "%",
+                );
+              }
+            }, 200);
+
+            $.ajax({
+              url: "/api/upload",
+              type: "POST",
+              data: formData,
+              processData: false,
+              contentType: false,
+              xhr: function () {
+                const xhr = new window.XMLHttpRequest();
+                xhr.upload.addEventListener(
+                  "progress",
+                  function (e) {
+                    if (e.lengthComputable) {
+                      const percent = Math.round((e.loaded / e.total) * 100);
+                      clearInterval(progressInterval);
+                      $(`#${loadingId} .progress-fill`).css(
+                        "width",
+                        percent + "%",
+                      );
+                      $(`#${loadingId} .upload-text`).text(
+                        `Uploading ${file.name}... ${percent}%`,
+                      );
+                    }
+                  },
+                  false,
+                );
+                return xhr;
+              },
+              success: function (response) {
+                clearInterval(progressInterval);
+
+                // Remove loading state immediately and forcefully
+                const loadingElement = document.getElementById(loadingId);
+                if (loadingElement) {
+                  loadingElement.remove();
+                }
+
+                // Send the file message
+                socket.emit("send_message", {
+                  sender: currentUser.email,
+                  recipient: chatWith.email,
+                  fileData: response,
+                });
+              },
+              error: function (xhr) {
+                clearInterval(progressInterval);
+                $(`#${loadingId}`).addClass("upload-error");
+                $(`#${loadingId} .upload-text`).text("Upload failed!");
+
+                setTimeout(() => {
+                  $(`#${loadingId}`).fadeOut(300, function () {
+                    $(this).remove();
+                  });
+                  alert(
+                    "Upload failed: " +
+                      (xhr.responseJSON?.error || "Unknown error"),
+                  );
+                }, 1000);
+              },
+            });
+          });
+        }
 
         $("#sendBtn").click(function () {
           const message = $("#message").val().trim();
           if (!message) return;
 
-          socket.emit("chat_message", { user: name, email, message });
+          socket.emit("send_message", {
+            sender: currentUser.email,
+            recipient: chatWith.email,
+            message: message,
+          });
+
           $("#message").val("");
         });
 
@@ -171,15 +320,16 @@
         });
 
         $("#logoutBtn").click(function () {
-          socket.emit("logout");
-          sessionStorage.removeItem("chatActive");
-          localStorage.removeItem("chatUser");
-          // Clear browser history and redirect
-          window.location.replace("welcome.html");
+          localStorage.removeItem("currentUser");
+          localStorage.removeItem("chatWith");
+          window.location.href = "/login.html";
         });
 
-        fetchUsers();
-        fetchMessages();
+        window.goBack = function () {
+          window.location.href = "/users.html";
+        };
+
+        loadMessages();
       });
     </script>
   </body>
