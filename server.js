@@ -59,7 +59,11 @@ const server = http.createServer(app);
 // Get allowed origins from environment or use defaults
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",")
-  : ["http://localhost:3000", "https://webservice-api-8oy7.onrender.com"];
+  : [
+      "http://localhost:3000",
+      "https://webservice-api-8oy7.onrender.com",
+      "https://webservice-api-2.onrender.com",
+    ];
 
 const io = new Server(server, {
   cors: {
@@ -71,47 +75,25 @@ const io = new Server(server, {
 const LIVE_ROOM = "live_users";
 const liveUsers = new Map(); // socketId -> { email, name, socketId }
 
-// Enhanced Security Headers Middleware
+// Relaxed Security Headers - preventing Chrome "Dangerous Site" warning
 app.use((req, res, next) => {
-  // Content Security Policy - allows necessary external resources
+  // More permissive Content Security Policy
   res.setHeader(
     "Content-Security-Policy",
-    "default-src 'self'; " +
-      "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://code.jquery.com; " +
-      "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; " +
-      "img-src 'self' data: https:; " +
-      "font-src 'self' data:; " +
-      "connect-src 'self' wss: ws: https:; " +
-      "media-src 'self'; " +
-      "object-src 'none'; " +
-      "frame-ancestors 'none'; " +
-      "base-uri 'self'; " +
-      "form-action 'self';",
+    "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+      "script-src * 'unsafe-inline' 'unsafe-eval'; " +
+      "style-src * 'unsafe-inline'; " +
+      "img-src * data: blob:; " +
+      "font-src * data:; " +
+      "connect-src *; " +
+      "media-src *; " +
+      "object-src *; " +
+      "frame-src *;",
   );
 
-  // Prevent MIME type sniffing
+  // Basic security headers
   res.setHeader("X-Content-Type-Options", "nosniff");
-
-  // Prevent clickjacking
-  res.setHeader("X-Frame-Options", "DENY");
-
-  // XSS Protection
   res.setHeader("X-XSS-Protection", "1; mode=block");
-
-  // Strict Transport Security (HTTPS only)
-  res.setHeader(
-    "Strict-Transport-Security",
-    "max-age=31536000; includeSubDomains; preload",
-  );
-
-  // Referrer Policy
-  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-
-  // Permissions Policy
-  res.setHeader(
-    "Permissions-Policy",
-    "geolocation=(), microphone=(), camera=()",
-  );
 
   next();
 });
@@ -127,6 +109,11 @@ app.use(
 );
 
 app.use(bodyParser.json());
+
+// Health check endpoint for Render
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "OK", timestamp: new Date() });
+});
 
 // Redirect root to welcome page
 app.get("/", (req, res) => {
@@ -373,6 +360,7 @@ const startServer = async () => {
     // Start server only after DB connection is established
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
     });
   } catch (err) {
     console.error("MongoDB connection failed:", err);
@@ -381,3 +369,15 @@ const startServer = async () => {
 };
 
 startServer();
+
+// Handle graceful shutdown
+process.on("SIGTERM", () => {
+  console.log("SIGTERM signal received: closing HTTP server");
+  server.close(() => {
+    console.log("HTTP server closed");
+    mongoose.connection.close(false, () => {
+      console.log("MongoDB connection closed");
+      process.exit(0);
+    });
+  });
+});
