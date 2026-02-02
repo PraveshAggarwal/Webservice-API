@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import cors from "cors";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
+import helmet from "helmet";
 import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -75,30 +76,25 @@ const io = new Server(server, {
 const LIVE_ROOM = "live_users";
 const liveUsers = new Map(); // socketId -> { email, name, socketId }
 
-// Relaxed Security Headers - preventing Chrome "Dangerous Site" warning
-app.use((req, res, next) => {
-  // More permissive Content Security Policy
-  res.setHeader(
-    "Content-Security-Policy",
-    "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
-      "script-src * 'unsafe-inline' 'unsafe-eval'; " +
-      "style-src * 'unsafe-inline'; " +
-      "img-src * data: blob:; " +
-      "font-src * data:; " +
-      "connect-src *; " +
-      "media-src *; " +
-      "object-src *; " +
-      "frame-src *;",
-  );
+// Helmet security middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'", "*"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "*"],
+      styleSrc: ["'self'", "'unsafe-inline'", "*"],
+      imgSrc: ["'self'", "data:", "blob:", "*"],
+      fontSrc: ["'self'", "data:", "*"],
+      connectSrc: ["'self'", "*"],
+      mediaSrc: ["'self'", "*"],
+      objectSrc: ["'none'"],
+      frameSrc: ["'self'", "*"]
+    }
+  },
+  crossOriginEmbedderPolicy: false
+}));
 
-  // Basic security headers
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-XSS-Protection", "1; mode=block");
-
-  next();
-});
-
-// Secure CORS configuration
+// CORS configuration
 app.use(
   cors({
     origin: allowedOrigins,
