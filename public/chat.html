@@ -65,8 +65,14 @@
 
         async function loadMessages() {
           try {
+            const token = localStorage.getItem('authToken');
             const response = await fetch(
               `/api/chat/${currentUser.email}/${chatWith.email}`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${token}`
+                }
+              }
             );
             const chat = await response.json();
 
@@ -244,6 +250,9 @@
               data: formData,
               processData: false,
               contentType: false,
+              headers: {
+                'Authorization': 'Bearer ' + localStorage.getItem('authToken')
+              },
               xhr: function () {
                 const xhr = new window.XMLHttpRequest();
                 xhr.upload.addEventListener(
@@ -321,6 +330,7 @@
 
         $("#logoutBtn").click(function () {
           localStorage.removeItem("currentUser");
+          localStorage.removeItem("authToken");
           localStorage.removeItem("chatWith");
           window.location.href = "/login.html";
         });

@@ -1,131 +1,109 @@
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
-import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
-import User from "./models/user.js";
-import PersonalChat from "./models/personalChat.js";
 import http from "http";
 import { Server } from "socket.io";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+
+import User from "./models/user.js";
+import PersonalChat from "./models/personalChat.js";
+import { generateToken, authMiddleware } from "./utils/jwt.js";
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, "public", "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-  console.log("Created uploads directory");
-}
-
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "public/uploads/");
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  },
-});
-
-const upload = multer({
-  storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx|mp4|mp3|wav/;
-    const extname = allowedTypes.test(
-      path.extname(file.originalname).toLowerCase(),
-    );
-    const mimetype = allowedTypes.test(file.mimetype);
-
-    if (mimetype && extname) {
-      return cb(null, true);
-    } else {
-      cb(new Error("Invalid file type"));
-    }
-  },
-});
-
 const app = express();
 const server = http.createServer(app);
 
-// Get allowed origins from environment or use defaults
+// =========================
+// ✅ Ensure uploads folder
+// =========================
+
+const uploadsDir = path.join(__dirname, "public", "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// =========================
+// ✅ SECURITY MIDDLEWARE
+// =========================
+
+app.use(helmet());
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+});
+app.use(limiter);
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// =========================
+// ✅ CORS
+// =========================
+
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",")
-  : [
-      "http://localhost:3000",
-      "https://webservice-api-8oy7.onrender.com",
-      "https://webservice-api-2.onrender.com",
-    ];
+  : ["http://localhost:3000", "https://webservice-api-2.onrender.com"];
 
-const io = new Server(server, {
-  cors: {
-    origin: allowedOrigins,
-    credentials: true,
-  },
-});
-
-const LIVE_ROOM = "live_users";
-const liveUsers = new Map(); // socketId -> { email, name, socketId }
-
-// Relaxed Security Headers - preventing Chrome "Dangerous Site" warning
-app.use((req, res, next) => {
-  // More permissive Content Security Policy
-  res.setHeader(
-    "Content-Security-Policy",
-    "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
-      "script-src * 'unsafe-inline' 'unsafe-eval'; " +
-      "style-src * 'unsafe-inline'; " +
-      "img-src * data: blob:; " +
-      "font-src * data:; " +
-      "connect-src *; " +
-      "media-src *; " +
-      "object-src *; " +
-      "frame-src *;",
-  );
-
-  // Basic security headers
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-XSS-Protection", "1; mode=block");
-
-  next();
-});
-
-// Secure CORS configuration
 app.use(
   cors({
     origin: allowedOrigins,
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
 
-app.use(bodyParser.json());
-
-// Health check endpoint for Render
-app.get("/health", (req, res) => {
-  res.status(200).json({ status: "OK", timestamp: new Date() });
-});
-
-// Redirect root to welcome page
-app.get("/", (req, res) => {
-  res.redirect("/welcome.html");
-});
+// =========================
+// ✅ STATIC FILES
+// =========================
 
 app.use(express.static("public"));
 
+// =========================
+// ✅ SAFE ROOT + HEALTH
+// =========================
+
+app.get("/", (req, res) => {
+  res.status(200).send("API server is running safely");
+});
+
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "OK" });
+});
+
+// =========================
+// ✅ MULTER UPLOAD
+// =========================
+
+const storage = multer.diskStorage({
+  destination: "public/uploads/",
+  filename: (req, file, cb) => {
+    const unique = Date.now() + "-" + Math.random();
+    cb(null, unique + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+// =========================
+// ✅ USER ROUTES
+// =========================
+
 app.post("/api/saveUser", async (req, res) => {
   try {
-    // Field allowlist for security
-    const allowedFields = {
+    const allowed = {
       firstName: req.body.firstName,
       lastName: req.body.lastName,
       mobile: req.body.mobile,
@@ -135,31 +113,13 @@ app.post("/api/saveUser", async (req, res) => {
       password: req.body.password,
     };
 
-    const user = new User(allowedFields);
+    const user = new User(allowed);
     await user.save();
-    res.json({ success: true, message: "User saved successfully" });
-  } catch (err) {
-    console.error("Save user error:", err);
 
-    if (err.name === "ValidationError") {
-      const errors = Object.values(err.errors).map((e) => e.message);
-      res.status(400).json({
-        success: false,
-        error: "Validation failed",
-        details: errors,
-      });
-    } else if (err.code === 11000) {
-      const field = Object.keys(err.keyPattern)[0];
-      res.status(400).json({
-        success: false,
-        error: `${field} already exists`,
-      });
-    } else {
-      res.status(500).json({
-        success: false,
-        error: "Server error occurred",
-      });
-    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ success: false, error: "User save failed" });
   }
 });
 
@@ -168,215 +128,147 @@ app.post("/api/login", async (req, res) => {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
 
-    if (!user || user.password !== password) {
-      return res
-        .status(401)
-        .json({ success: false, error: "Invalid credentials" });
+    if (!user || !(await user.comparePassword(password))) {
+      return res.status(401).json({ success: false });
     }
+
+    const token = generateToken({
+      id: user._id,
+      email: user.email,
+      name: user.firstName + " " + user.lastName,
+    });
 
     res.json({
       success: true,
+      token,
       user: {
         email: user.email,
-        name: `${user.firstName} ${user.lastName}`,
+        name: user.firstName + " " + user.lastName,
       },
     });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch {
+    res.status(500).json({ success: false });
   }
 });
 
-app.get("/api/getUsers", async (req, res) => {
+app.get("/api/getUsers", authMiddleware, async (req, res) => {
   try {
-    const filter = {};
-    if (req.query.email) {
-      filter.email = req.query.email;
-    }
-    const users = await User.find(filter);
+    const users = await User.find();
     res.json(users);
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch {
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-app.get("/api/users-list/:currentUser", async (req, res) => {
+app.get("/api/users-list/:currentUser", authMiddleware, async (req, res) => {
   try {
-    const { currentUser } = req.params;
-    const users = await User.find({ email: { $ne: currentUser } }).select(
-      "firstName lastName email",
-    );
+    const users = await User.find({
+      email: { $ne: req.params.currentUser },
+    }).select("firstName lastName email");
+
     res.json(users);
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch {
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// Personal chat endpoints
-app.post("/api/upload", upload.single("file"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res
-        .status(400)
-        .json({ success: false, error: "No file uploaded" });
-    }
+// =========================
+// ✅ FILE UPLOAD
+// =========================
 
-    // Simulate slow upload to show loading (500ms-1s based on file size)
-    const fileSize = req.file.size;
-    const delay = Math.min(1000, Math.max(500, fileSize / 500000)); // 0.5-1 seconds
-    await new Promise((resolve) => setTimeout(resolve, delay));
-
-    res.json({
-      success: true,
-      filename: req.file.filename,
-      originalName: req.file.originalname,
-      size: req.file.size,
-      url: `/uploads/${req.file.filename}`,
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+app.post("/api/upload", authMiddleware, upload.single("file"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file" });
   }
+
+  res.json({
+    success: true,
+    url: `/uploads/${req.file.filename}`,
+    name: req.file.originalname,
+    size: req.file.size,
+  });
 });
 
-app.get("/api/chat/:user1/:user2", async (req, res) => {
+// =========================
+// ✅ CHAT API
+// =========================
+
+app.get("/api/chat/:user1/:user2", authMiddleware, async (req, res) => {
   try {
-    const { user1, user2 } = req.params;
-    const participants = [user1, user2].sort();
+    const participants = [req.params.user1, req.params.user2].sort();
     const chat = await PersonalChat.findOne({ participants });
+
     res.json(chat || { participants, messages: [] });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch {
+    res.status(500).json({ error: "Server error" });
   }
+});
+
+// =========================
+// ✅ SOCKET.IO
+// =========================
+
+const io = new Server(server, {
+  cors: { origin: allowedOrigins },
 });
 
 io.on("connection", (socket) => {
-  socket.on("join_chat", ({ email, name }) => {
-    if (!email || !name) return;
-
-    const data = { email, name, socketId: socket.id };
-    liveUsers.set(socket.id, data);
-    socket.join(LIVE_ROOM);
-    emitLiveUsers();
-  });
-
   socket.on("join_personal_chat", ({ user1, user2 }) => {
     const room = [user1, user2].sort().join("-");
     socket.join(room);
   });
 
-  socket.on(
-    "send_message",
-    async ({ sender, recipient, message, fileData }) => {
-      if (!sender || !recipient || (!message && !fileData)) return;
-
-      try {
-        const participants = [sender, recipient].sort();
-        let chat = await PersonalChat.findOne({ participants });
-
-        if (!chat) {
-          chat = new PersonalChat({ participants, messages: [] });
-        }
-
-        const newMessage = {
-          sender,
-          timestamp: new Date(),
-          messageType: fileData ? "file" : "text",
-        };
-
-        if (fileData) {
-          newMessage.fileUrl = fileData.url;
-          newMessage.fileName = fileData.originalName;
-          newMessage.fileSize = fileData.size;
-          newMessage.message = fileData.originalName;
-        } else {
-          newMessage.message = message;
-        }
-
-        chat.messages.push(newMessage);
-        chat.lastMessage = new Date();
-        const savedChat = await chat.save();
-
-        // Get the saved message with _id
-        const savedMessage = savedChat.messages[savedChat.messages.length - 1];
-
-        const room = participants.join("-");
-        io.to(room).emit("receive_message", savedMessage);
-      } catch (err) {
-        console.error("Failed to save message:", err);
-      }
-    },
-  );
-
-  socket.on("delete_message", async ({ messageId, userEmail }) => {
+  socket.on("send_message", async (data) => {
     try {
-      const chat = await PersonalChat.findOne({
-        "messages._id": messageId,
-        "messages.sender": userEmail,
+      const { sender, recipient, message } = data;
+      const participants = [sender, recipient].sort();
+
+      let chat = await PersonalChat.findOne({ participants });
+
+      if (!chat) {
+        chat = new PersonalChat({ participants, messages: [] });
+      }
+
+      chat.messages.push({
+        sender,
+        message,
+        timestamp: new Date(),
       });
 
-      if (chat) {
-        chat.messages.pull(messageId);
-        await chat.save();
+      await chat.save();
 
-        const room = chat.participants.sort().join("-");
-        io.to(room).emit("message_deleted", { messageId });
-      }
+      const room = participants.join("-");
+      io.to(room).emit("receive_message", chat.messages.at(-1));
     } catch (err) {
-      console.error("Failed to delete message:", err);
-    }
-  });
-
-  socket.on("logout", () => {
-    if (liveUsers.has(socket.id)) {
-      liveUsers.delete(socket.id);
-      emitLiveUsers();
-    }
-  });
-
-  socket.on("disconnect", () => {
-    if (liveUsers.has(socket.id)) {
-      liveUsers.delete(socket.id);
-      emitLiveUsers();
+      console.error("Socket save error:", err);
     }
   });
 });
 
-function emitLiveUsers() {
-  const users = Array.from(liveUsers.values());
-  io.to(LIVE_ROOM).emit("live_users_update", users);
-}
+// =========================
+// ✅ START SERVER AFTER DB
+// =========================
 
 const PORT = process.env.PORT || 3000;
 
-// Connect to MongoDB first, then start server
-const startServer = async () => {
-  try {
-    await mongoose.connect(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 30000,
-      socketTimeoutMS: 45000,
-      bufferCommands: false, // Disable buffering to fail fast instead of timing out
-    });
-    console.log("MongoDB connected successfully");
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => {
+    console.log("MongoDB connected");
+    server.listen(PORT, () => console.log("Server running on", PORT));
+  })
+  .catch((err) => {
+    console.error("MongoDB failed:", err);
+    process.exit(1);
+  });
 
-    // Start server only after DB connection is established
-    server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
-    });
-  } catch (err) {
-    console.error("MongoDB connection failed:", err);
-    process.exit(1); // Exit if can't connect to DB
-  }
-};
+// =========================
+// ✅ SHUTDOWN HANDLER
+// =========================
 
-startServer();
-
-// Handle graceful shutdown
 process.on("SIGTERM", () => {
-  console.log("SIGTERM signal received: closing HTTP server");
   server.close(() => {
-    console.log("HTTP server closed");
     mongoose.connection.close(false, () => {
-      console.log("MongoDB connection closed");
       process.exit(0);
     });
   });

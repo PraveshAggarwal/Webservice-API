@@ -62,8 +62,9 @@
           success: function (res) {
             alert("Login successful!");
             
-            // Store user data in localStorage
+            // Store user data and token in localStorage
             localStorage.setItem('currentUser', JSON.stringify(res.user));
+            localStorage.setItem('authToken', res.token);
             window.location.href = 'users.html';
           },
           error: function (xhr) {

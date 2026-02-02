@@ -130,7 +130,12 @@
 
         async function loadUsers() {
             try {
-                const response = await fetch(`/api/users-list/${currentUser.email}`);
+                const token = localStorage.getItem('authToken');
+                const response = await fetch(`/api/users-list/${currentUser.email}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
                 const users = await response.json();
                 
                 const userList = document.getElementById('userList');
@@ -163,6 +168,7 @@
 
         function logout() {
             localStorage.removeItem('currentUser');
+            localStorage.removeItem('authToken');
             localStorage.removeItem('chatWith');
             window.location.href = '/login.html';
         }
