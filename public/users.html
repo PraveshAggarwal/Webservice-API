@@ -113,7 +113,7 @@
         <div class="header">
             <h1>Personal Chat System</h1>
             <p>Welcome, <span id="currentUserName"></span></p>
-            <button class="logout-btn" onclick="logout()">Logout</button>
+            <button class="logout-btn" id="logoutBtn">Logout</button>
         </div>
         <div class="user-list" id="userList">
             <div class="loading">Loading users...</div>
@@ -150,7 +150,7 @@
                             <h3>${user.firstName} ${user.lastName}</h3>
                             <p>${user.email}</p>
                         </div>
-                        <button class="chat-btn" onclick="openChat('${user.email}', '${user.firstName} ${user.lastName}')">
+                        <button class="chat-btn" data-user-email="${user.email}" data-user-name="${user.firstName} ${user.lastName}">
                             Chat
                         </button>
                     </div>
@@ -172,6 +172,15 @@
             localStorage.removeItem('chatWith');
             window.location.href = '/login.html';
         }
+
+        document.getElementById('logoutBtn').addEventListener('click', logout);
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('chat-btn')) {
+                const userEmail = e.target.dataset.userEmail;
+                const userName = e.target.dataset.userName;
+                openChat(userEmail, userName);
+            }
+        });
 
         loadUsers();
     </script>

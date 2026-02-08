@@ -28,7 +28,7 @@
 
         <button
           type="button"
-          onclick="login()"
+          id="loginBtn"
           class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200 transform hover:scale-105 mt-6"
         >
           Login
@@ -80,6 +80,9 @@
         if (currentUser) {
           window.location.href = 'users.html';
         }
+
+        // Attach event listener to login button
+        $('#loginBtn').on('click', login);
       });
     </script>
   </body>

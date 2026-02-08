@@ -14,7 +14,7 @@
         <div class="chat-header">
           <h1 id="chatTitle">Personal Chat</h1>
           <div>
-            <button onclick="goBack()">Back to Users</button>
+            <button id="backBtn">Back to Users</button>
             <button id="logoutBtn">Logout</button>
           </div>
         </div>
@@ -96,7 +96,7 @@
             minute: "2-digit",
           });
           const deleteBtn = isOwnMessage
-            ? `<button class="delete-btn" onclick="deleteMessage('${msg._id}')" title="Delete">🗑️</button>`
+            ? `<button class="delete-btn" data-message-id="${msg._id}" title="Delete">🗑️</button>`
             : "";
 
           let content = "";
@@ -105,9 +105,9 @@
             const isImage = ["jpg", "jpeg", "png", "gif"].includes(fileExt);
 
             if (isImage) {
-              content = `<img src="${msg.fileUrl}" alt="${msg.fileName}" class="message-image" onclick="window.open('${msg.fileUrl}', '_blank')">`;
+              content = `<img src="${msg.fileUrl}" alt="${msg.fileName}" class="message-image" data-file-url="${msg.fileUrl}">`;
             } else {
-              content = `<div class="file-attachment" onclick="window.open('${msg.fileUrl}', '_blank')">
+              content = `<div class="file-attachment" data-file-url="${msg.fileUrl}">
                 <span class="file-icon">📎</span>
                 <div class="file-info">
                   <div class="file-name">${msg.fileName}</div>
@@ -193,7 +193,8 @@
           }
         });
 
-        window.deleteMessage = function (messageId) {
+        $(document).on('click', '.delete-btn', function() {
+          const messageId = $(this).data('message-id');
           if (!messageId) return;
           if (confirm("Delete this message?")) {
             socket.emit("delete_message", {
@@ -201,7 +202,12 @@
               userEmail: currentUser.email,
             });
           }
-        };
+        });
+
+        $(document).on('click', '.message-image, .file-attachment', function() {
+          const fileUrl = $(this).data('file-url');
+          if (fileUrl) window.open(fileUrl, '_blank');
+        });
 
         socket.on("message_deleted", function ({ messageId }) {
           $(`li[data-id="${messageId}"]`).remove();
@@ -335,9 +341,9 @@
           window.location.href = "/login.html";
         });
 
-        window.goBack = function () {
+        $("#backBtn").click(function () {
           window.location.href = "/users.html";
-        };
+        });
 
         loadMessages();
       });
