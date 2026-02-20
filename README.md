@@ -1,6 +1,6 @@
 # Webservice-API
 
-<!-- Mobzway Chat Application
+ Mobzway Chat Application
 
 A real-time personal chat application with user management, file sharing, and Socket.IO integration.
 
@@ -57,4 +57,4 @@ npm start
 - MongoDB + Mongoose
 - Socket.IO for real-time communication
 - Multer for file uploads
-- TailwindCSS for styling -->
+- TailwindCSS for styling 
